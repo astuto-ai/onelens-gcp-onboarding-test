@@ -1,7 +1,10 @@
 # -----------------------------------------------------------------------------
-# SERVICE ACCOUNT CREATION
+# SERVICE ACCOUNT CREATION (CONDITIONAL)
 # -----------------------------------------------------------------------------
+# Creates a new service account only if an existing one is not provided.
 resource "google_service_account" "finops_sa" {
+  count = var.existing_finops_service_account_email == null ? 1 : 0
+
   account_id   = var.finops_service_account_id
   display_name = "OneLens Reader Service Account"
   project      = var.target_project_ids[0] # Creates the SA in the first project in the list
@@ -23,7 +26,8 @@ resource "google_project_service" "billing_export_apis" {
     "serviceusage.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "billingbudgets.googleapis.com",
-    "bigquery.googleapis.com"
+    "bigquery.googleapis.com",
+    "cloudbilling.googleapis.com"
   ]) : []
 
   project            = google_project.billing_export[0].project_id
@@ -36,11 +40,16 @@ resource "google_project_service" "billing_export_apis" {
 # -----------------------------------------------------------------------------
 
 locals {
+  # Determine which service account email to use: the newly created one or an existing one.
+  finops_sa_email = var.existing_finops_service_account_email == null ? google_service_account.finops_sa[0].email : var.existing_finops_service_account_email
+
   billing_project_id = var.create_billing_export_project ? google_project.billing_export[0].project_id : var.billing_export_project_id
 
-  organization_roles = [
-    "roles/billing.viewer",
-    "roles/resourcemanager.organizationViewer"
+  # These roles are applied at either the Folder or Organization level.
+  folder_or_org_roles = [
+    "roles/resourcemanager.organizationViewer",
+    "roles/resourcemanager.folderViewer",
+    "roles/cloudasset.viewer"
   ]
 
   # Base list of project-level roles.
@@ -64,6 +73,7 @@ locals {
     "roles/recommender.viewer",
     "roles/redis.viewer",
     "roles/run.viewer",
+    "roles/serviceusage.serviceUsageViewer",
     "roles/spanner.viewer",
     "roles/storage.viewer"
   ]
@@ -74,6 +84,8 @@ locals {
     "artifactregistry.googleapis.com",
     "bigquery.googleapis.com",
     "bigtable.googleapis.com",
+    "cloudasset.googleapis.com",
+    "cloudbilling.googleapis.com",
     "cloudfunctions.googleapis.com",
     "sqladmin.googleapis.com",
     "compute.googleapis.com",
@@ -89,13 +101,13 @@ locals {
     "recommender.googleapis.com",
     "redis.googleapis.com",
     "run.googleapis.com",
+    "serviceusage.googleapis.com",
     "spanner.googleapis.com",
     "storage.googleapis.com"
   ]
 }
 
 # --- Enable APIs on all Target Projects ---
-# This ensures that roles can be applied without "not supported" errors.
 resource "google_project_service" "target_project_apis" {
   for_each = toset(flatten([
     for project in var.target_project_ids : [
@@ -109,22 +121,37 @@ resource "google_project_service" "target_project_apis" {
   disable_on_destroy = false
 }
 
-
-# --- Organization Level Roles ---
-resource "google_organization_iam_member" "org_bindings" {
-  for_each = toset(local.organization_roles)
-  org_id   = var.target_organization_id
-  role     = each.key
-  member   = "serviceAccount:${google_service_account.finops_sa.email}"
+# --- Billing Account Level Role ---
+resource "google_billing_account_iam_member" "billing_viewer" {
+  billing_account_id = var.target_billing_account_id
+  role               = "roles/billing.viewer"
+  member             = "serviceAccount:${local.finops_sa_email}"
 }
 
-# --- BigQuery Billing Export Roles (Conditional) ---
+# --- Organization Level Roles (Conditional) ---
+resource "google_organization_iam_member" "org_bindings" {
+  count    = var.target_folder_id == null ? 1 : 0
+  for_each = toset(local.folder_or_org_roles)
+  org_id   = var.target_organization_id
+  role     = each.key
+  member   = "serviceAccount:${local.finops_sa_email}"
+}
+
+# --- Folder Level Roles (Conditional) ---
+resource "google_folder_iam_member" "folder_bindings" {
+  count    = var.target_folder_id != null ? 1 : 0
+  for_each = toset(local.folder_or_org_roles)
+  folder   = "folders/${var.target_folder_id}"
+  role     = each.key
+  member   = "serviceAccount:${local.finops_sa_email}"
+}
+
+# --- BigQuery Billing Export Roles ---
 resource "google_project_iam_member" "bigquery_billing_export_bindings" {
   for_each = toset(var.billing_export_project_id != null ? ["roles/bigquery.jobUser", "roles/bigquery.dataViewer"] : [])
   project  = local.billing_project_id
   role     = each.key
-  member   = "serviceAccount:${google_service_account.finops_sa.email}"
-
+  member   = "serviceAccount:${local.finops_sa_email}"
   depends_on = [google_project.billing_export]
 }
 
@@ -134,7 +161,7 @@ module "project_iam_bindings" {
   for_each = toset(var.target_project_ids)
 
   project_id                   = each.key
-  finops_service_account_email = google_service_account.finops_sa.email
+  finops_service_account_email = local.finops_sa_email
   roles                        = local.base_project_roles
   depends_on = [
     google_project_service.target_project_apis
@@ -142,12 +169,10 @@ module "project_iam_bindings" {
 }
 
 # --- Conditional App Engine Role ---
-# IMPORTANT: For this to succeed, the target project(s) MUST have an App Engine application
-# initialized BEFORE running 'terraform apply'.
 resource "google_project_iam_member" "appengine_viewer_binding" {
   for_each = toset(var.enable_appengine_viewer ? var.target_project_ids : [])
 
   project = each.key
   role    = "roles/appengine.viewer"
-  member  = "serviceAccount:${google_service_account.finops_sa.email}"
+  member  = "serviceAccount:${local.finops_sa_email}"
 }
