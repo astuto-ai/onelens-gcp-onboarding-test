@@ -1,21 +1,27 @@
-# The desired ID for the OneLens Reader service account.
-finops_service_account_id = "fawaz-test"
+# --- Service Account Configuration ---
 
-# A list of the customer's projects to monitor.
+# Create a new service account ur use an existing one
+# Provide an ID for the new service account and leave the 'existing_finops_service_account_email' commented out or null.
+# finops_service_account_id = null
+existing_finops_service_account_email = "fawaz-test1-integration@astuto-test-mum.iam.gserviceaccount.com"
+
+
+# --- Target GCP Resources ---
 target_project_ids = [
   "astuto-test-mum"
 ]
 
-# The customer's organization ID for hierarchy viewing.
-target_organization_id = "985833232516" # e.g. "123456789012"
+target_billing_account_id = "018F24-AE226D-4C8CCC"
+target_organization_id    = "985833232516"
 
-# The project where billing is exported to BigQuery.
-# If create_billing_export_project is true, a new project with this ID will be created.
-billing_export_project_id = "billing-export-468711"
+# Optional: To apply viewer roles to a specific folder, uncomment and set the folder ID.
+# Otherwise, roles are applied at the organization level.
+# target_folder_id = "234567890123"
 
-# Set to true if you want Terraform to create the billing export project for you.
-# Make sure the user/SA running terraform has permissions to create projects.
+# --- Billing Export Project ---
+billing_export_project_id   = "billing-export-468711"
 create_billing_export_project = false
 
-# Set to true if you want Terraform to attempt to grant the App Engine Viewer role to projects that have the App Engine API enabled.
+# --- Conditional Roles ---
+# Set to true only if the target projects have App Engine initialized.
 enable_appengine_viewer = false
