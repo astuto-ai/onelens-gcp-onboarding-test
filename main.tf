@@ -130,8 +130,7 @@ resource "google_billing_account_iam_member" "billing_viewer" {
 
 # --- Organization Level Roles (Conditional) ---
 resource "google_organization_iam_member" "org_bindings" {
-  count    = var.target_folder_id == null ? 1 : 0
-  for_each = toset(local.folder_or_org_roles)
+  for_each = var.target_folder_id == null ? toset(local.folder_or_org_roles) : toset([])
   org_id   = var.target_organization_id
   role     = each.key
   member   = "serviceAccount:${local.finops_sa_email}"
@@ -139,8 +138,7 @@ resource "google_organization_iam_member" "org_bindings" {
 
 # --- Folder Level Roles (Conditional) ---
 resource "google_folder_iam_member" "folder_bindings" {
-  count    = var.target_folder_id != null ? 1 : 0
-  for_each = toset(local.folder_or_org_roles)
+  for_each = var.target_folder_id != null ? toset(local.folder_or_org_roles) : toset([])
   folder   = "folders/${var.target_folder_id}"
   role     = each.key
   member   = "serviceAccount:${local.finops_sa_email}"
@@ -176,3 +174,4 @@ resource "google_project_iam_member" "appengine_viewer_binding" {
   role    = "roles/appengine.viewer"
   member  = "serviceAccount:${local.finops_sa_email}"
 }
+
