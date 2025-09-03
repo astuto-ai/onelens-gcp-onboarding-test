@@ -75,7 +75,7 @@ locals {
     "roles/run.viewer",
     "roles/serviceusage.serviceUsageViewer",
     "roles/spanner.viewer",
-    "roles/storage.viewer"
+    "roles/storage.objectViewer"
   ]
 
   # List of APIs corresponding to the roles above.
