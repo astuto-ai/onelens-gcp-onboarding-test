@@ -17,7 +17,7 @@ target_organization_id    = "000000000000"
 # target_folder_id = "000000000000"
 
 # --- Billing Export Project ---
-billing_export_project_id   = "enter-billing-export-project-id"
+billing_export_project_id   = "billing-export-project-id"
 create_billing_export_project = true
 
 # --- Conditional Roles ---
